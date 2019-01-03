@@ -1,12 +1,15 @@
 /**
  * Abstract behavior for a pie chart.
- * @param coords
+ * @param config
  * @constructor
  */
-function AbstractPieChart(coords) {
-    this.cx = coords.cx;
-    this.cy = coords.cy;
-    this.r = coords.r;
+function AbstractPieChart(config) {
+  this.target = config.target;
+  this.width = config.width || 250;
+  this.height = config.height || 250;
+  this.cx = config.cx || this.width/2;
+  this.cy = config.cy || this.height/2;
+  this.r = config.r || this.width/2;
 }
 
 AbstractPieChart.prototype.makeLabel = function(piece) {
@@ -34,13 +37,12 @@ AbstractPieChart.prototype.calcCoord = function(pct) {
  * Pie Chart based on a SVG implementation.  Will use svg paths to generate
  * a pie chart.
  *
- * @param coords
+ * @param config
  * @param elem  - svg dom element we will use to create the pie chart
  * @constructor
  */
-function SVGPieChart(coords, elem) {
-    AbstractPieChart.call(this, coords);
-    this.chart = elem;
+function SVGPieChart(config, elem) {
+    AbstractPieChart.call(this, config);
 }
 SVGPieChart.prototype = Object.create(AbstractPieChart.prototype);
 
@@ -50,6 +52,10 @@ SVGPieChart.prototype = Object.create(AbstractPieChart.prototype);
  */
 SVGPieChart.prototype.draw = function(slices) {
     const self = this;
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("width", self.width);
+    svg.setAttribute("height", self.height);
+    svg.setAttribute("class", "svg-pie");
 
     function addTitle(parent, piece) {
         const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
@@ -70,13 +76,14 @@ SVGPieChart.prototype.draw = function(slices) {
         circle.setAttribute("fill", piece.color);
         circle.setAttribute("stroke", "black");
         addTitle(circle, piece);
-        self.chart.appendChild(circle);
+        svg.appendChild(circle);
+        self.target.appendChild(svg);
         return;
     }
 
     let move = `M${self.cx + self.r} ${self.cy}`;
     let totalPct = 0;
-    slices.forEach((piece) => {
+    slices.forEach(function(piece) {
         const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
         addTitle(path, piece);
 
@@ -94,24 +101,42 @@ SVGPieChart.prototype.draw = function(slices) {
        path.setAttribute("d", slice);
        path.setAttribute("fill", piece.color);
        path.setAttribute("stroke", "black");
-       self.chart.appendChild(path);
+       svg.appendChild(path);
        totalPct = totalPct + piece.pct;
        move = `M${endCoord.x} ${endCoord.y}`;
     }, self);
+
+    self.target.appendChild(svg);
 };
 
 
 /**
  * Canvas based implementation of a pie chart.
- * @param coords
- * @param layers - Requires 3 canvas layers to render the pie chart
+ * @param config
  * @constructor
  */
-function CanvasPieChart(coords, layers) {
-    AbstractPieChart.call(this, coords);
-    this.mainCanvas = layers.mainCanvas;
-    this.hitCanvas = layers.hitCanvas;
-    this.tipCanvas = layers.tipCanvas;
+function CanvasPieChart(config) {
+    AbstractPieChart.call(this, config);
+    const self = this;
+
+    // Requires 3 canvas layers to render the pie chart
+    self.mainCanvas = createCanvas(true, "canvas-pie");
+    self.hitCanvas = createCanvas(false, "canvas-pie-hit");
+    self.tipCanvas = createCanvas(true, "canvas-pie-tip");
+
+    function createCanvas(visible, cssClass) {
+      const canvas = document.createElement("canvas");
+      canvas.setAttribute("width", self.width);
+      canvas.setAttribute("height", self.height);
+      canvas.setAttribute("class", cssClass);
+
+      let style = "position: absolute;";
+      if (!visible) {
+        style = `visibility: hidden; ${style}`;
+      }
+      canvas.setAttribute("style", style);
+      return canvas;
+    }
 }
 CanvasPieChart.prototype = Object.create(AbstractPieChart.prototype);
 
@@ -147,7 +172,7 @@ CanvasPieChart.prototype.draw = function(slices) {
     let startAngle = 0;
     let colorCounter = [0,0,0];
 
-    slices.forEach((piece) => {
+    slices.forEach(function (piece) {
       const endAngle = (totalPct + piece.pct) * 2 * Math.PI;
       drawPath(mainCtx, piece, startAngle, endAngle, piece.color);
 
@@ -187,7 +212,7 @@ CanvasPieChart.prototype.draw = function(slices) {
       tipCtx.fillText(text.label, x, y);
     }
 
-    self.tipCanvas.addEventListener("mousemove", (event) => {
+    self.tipCanvas.addEventListener("mousemove", function(event) {
       const rect = self.hitCanvas.getBoundingClientRect();
       const canvasCoord = {
         x: event.clientX - rect.left,
@@ -209,7 +234,11 @@ CanvasPieChart.prototype.draw = function(slices) {
       displayLabel(canvasCoord.x, canvasCoord.y, label);
     });
 
-    self.tipCanvas.addEventListener("mouseleave", () => {
+    self.tipCanvas.addEventListener("mouseleave", function() {
       tipCtx.clearRect(0, 0, self.tipCanvas.width, self.tipCanvas.height);
     });
+
+    self.target.appendChild(self.hitCanvas);
+    self.target.appendChild(self.mainCanvas);
+    self.target.appendChild(self.tipCanvas);
 };
